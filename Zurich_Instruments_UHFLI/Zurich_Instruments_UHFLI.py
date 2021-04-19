@@ -8,7 +8,6 @@ import zhinst.toolkit as tk
 # change this value in case you are not using 'localhost'
 HOST = "localhost"
 
-
 class Driver(LabberDriver):
     """ This class implements a Labber driver"""
 
@@ -38,7 +37,6 @@ class Driver(LabberDriver):
     def performSetValue(self, quant, value, sweepRate=0.0, options={}):
         """Perform the Set Value instrument operation. This function should
         return the actual value set by the instrument"""
-
         quant.setValue(value)
 
         if self.isFirstCall(options):
@@ -189,7 +187,15 @@ class Driver(LabberDriver):
     def update_sequencers(self):
         """Handles the 'set_sequence_params(...)' for the AWGs."""
         if self.sequencer_updated:
+            base_name = f"Sequencer - "
             params = self.get_sequence_params()
+            #Set up arbitary parameter for the suquence
+            Number_of_parameters=int(self.getValue(base_name + "Number of Parameters"))
+            varnargin=np.zeros(Number_of_parameters)
+            for i in range(Number_of_parameters):
+                varnargin[i]=self.getValue(base_name + "Parameter%i" %i)
+            params["varnargin"]= varnargin
+
             if params["sequence_type"] != "None":
                 self.controller.awg.set_sequence_params(**params)
 
@@ -200,7 +206,7 @@ class Driver(LabberDriver):
         params = dict(
             sequence_type=self.getValue(base_name + "Sequence"), clock_rate=1.8e9,
         )
-        if params["sequence_type"] == "Pulse Train":
+        if (params["sequence_type"] == "Pulse Train") or (params["sequence_type"] == "Pulse Train2"):
             params.update(repetitions=int(self.getValue(base_name + "Repetitions")))
         if params["sequence_type"] == "Custom":
             params.update(path=self.getValue(base_name + "Custom Path"))
@@ -213,15 +219,22 @@ class Driver(LabberDriver):
             self.controller.awg.reset_queue()
         if any(self.waveforms_updated):
             w1 = self.getValueArray("Waveform 1")
-            w2 = self.getValueArray("Waveform 1")
+            w2 = self.getValueArray("Waveform 2")
             self.controller.awg.queue_waveform(w1, w2)
+            Number_of_waveforms=int(self.getValue("Sequencer - Number of Waveforms"))
+            if Number_of_waveforms>1:
+                for i in range(Number_of_waveforms-1):
+                    w1 = self.getValueArray("Waveform 1_%i" %(i+1))
+                    w2 = self.getValueArray("Waveform 2_%i" %(i+1))
+                    self.controller.awg.queue_waveform(w1, w2)
+
 
     def compile_sequencers(self):
         """Handles the compilation and waveform upload of the AWGs."""
         sequence_type = self.getValue("Sequencer - Sequence")
         if sequence_type != "None":
             self.controller.awg.compile()
-        if sequence_type == "Pulse Train":
+        if (sequence_type == "Pulse Train") or (sequence_type == "Pulse Train2"):
             self.controller.awg.upload_waveforms()
 
     def set_daq_value(self, quant, value):
