@@ -71,6 +71,11 @@ class Driver(LabberDriver):
                 if not self.controller.sweeper.signals:
                     self.get_sweeper_signals()
                 self.sweeper_measure()
+        elif "Scope" in quant.name:
+            if quant.set_cmd:
+                value = self.set_scope_value(quant, value)
+            if quant.name == "Scope - Measure" and value:
+                self.scope_measure()
         # if a 'set_cmd' is defined, just set the node
         elif quant.set_cmd:
             value = self.set_node_value(quant, value)
@@ -152,6 +157,15 @@ class Driver(LabberDriver):
                     return self.sweeper_result_to_quant(quant, result)
                 except:
                     return self.sweeper_return_zeros(quant)
+        elif "Scope" in quant.name:
+            if quant.get_cmd:
+                return self.get_scope_value(quant)
+            elif "Trace" in quant.name:
+                try:
+                    result = self.controller.scope._result
+                    return self.scope_result_to_quant(quant, result)
+                except:
+                    return self.scope_return_zeros(quant)
         # if not a DAQ or Sweeper node and a 'get_cmd' is defined
         elif quant.get_cmd:
             return self.controller._get(quant.get_cmd)
@@ -250,6 +264,19 @@ class Driver(LabberDriver):
         param = self.controller.daq.__dict__[name]
         return param()
 
+    def set_scope_value(self, quant, value):
+        """Handles setting of scope module nodes with 'set_cmd'."""
+        name = quant.set_cmd
+        param = self.controller.scope.__dict__[name]
+        param(value)
+        return param()
+
+    def get_scope_value(self, quant):
+        """Handles getting of scope module nodes with 'get_cmd'."""
+        name = quant.set_cmd
+        param = self.controller.scope.__dict__[name]
+        return param()
+
     def set_sweeper_value(self, quant, value):
         """Handles getting of Sweeper module nodes with 'set_cmd'."""
         name = quant.set_cmd
@@ -276,6 +303,17 @@ class Driver(LabberDriver):
     def daq_return_zeros(self, quant):
         """Generate a result trace dictionary with zeros for invalid result."""
         l = self.controller.daq._get("/grid/cols")
+        return quant.getTraceDict(np.zeros(l), x=np.linspace(0, 1, l))
+    
+    def scope_result_to_quant(self, quant, result):
+        """Gets the corresponding result data from the scope module."""
+        x = result.time if result.time is not None else 0
+        y = result.wave1
+        return quant.getTraceDict(y, x=x)
+
+    def scope_return_zeros(self, quant):
+        """Generate a result trace dictionary with zeros for invalid result."""
+        l = self.controller.scope.length()
         return quant.getTraceDict(np.zeros(l), x=np.linspace(0, 1, l))
 
     def sweeper_result_to_quant(self, quant, result):
@@ -370,3 +408,13 @@ class Driver(LabberDriver):
             self.setValue("Sweeper Control - Status", "Ready for Measurement")
         except TimeoutError:
             self.controller.sweeper._results = {}
+
+    def scope_measure(self):
+        """Start the measurement on the DAQ."""
+        timeout = self.getValue("Scope - Timeout")
+        try:
+            self.setValue("Scope - Status", f"Busy ...")
+            self.controller.scope.measure(timeout=timeout)
+            self.setValue("Scope - Status", f"Ready for Measurement")
+        except TimeoutError:
+            self.controller.daq._results = {}
